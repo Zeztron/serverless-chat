@@ -1,0 +1,133 @@
+service: serverless-chat
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+
+  stage: dev
+  region: us-east-1
+
+  environment:
+    WSSAPIGATEWAYENDPOINT:
+      Fn::Join:
+        - ""
+        - - Ref: WebsocketsApi
+          - ".execute-api."
+          - Ref: AWS::Region
+          - ".amazonaws.com/${self:stage}"
+
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - "dynamodb:PutItem"
+            - "dynamodb:GetItem"
+            - "dynamodb:DeleteItem"
+            - "dynamodb:Scan"
+          Resource:
+            - { "Fn::GetAtt": ["ClientsTable", "Arn"] }
+        - Effect: Allow
+          Action:
+            - "dynamodb:Query"
+          Resource:
+            Fn::Join:
+              - "/"
+              - - { "Fn::GetAtt": ["ClientsTable", "Arn"] }
+                - "index"
+                - "*"
+        - Effect: Allow
+          Action:
+            - "dynamodb:PutItem"
+            - "dynamodb:GetItem"
+            - "dynamodb:DeleteItem"
+            - "dynamodb:Scan"
+          Resource:
+            - { "Fn::GetAtt": ["MessagesTable", "Arn"] }
+        - Effect: Allow
+          Action:
+            - "dynamodb:Query"
+          Resource:
+            Fn::Join:
+              - "/"
+              - - { "Fn::GetAtt": ["MessagesTable", "Arn"] }
+                - "index"
+                - "*"
+
+functions:
+  webSocketHandler:
+    handler: src/handler.handle
+    events:
+      - websocket:
+          route: $connect
+      - websocket:
+          route: $disconnect
+      - websocket:
+          route: getMessages
+      - websocket:
+          route: sendMessages
+      - websocket:
+          route: getClients
+
+resources:
+  Resources:
+    ClientsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: Clients
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        AttributeDefinitions:
+          - AttributeName: connectionId
+            AttributeType: S
+          - AttributeName: user
+            AttributeType: S
+        KeySchema:
+          - AttributeName: connectionId
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: userIndex
+            KeySchema:
+              - AttributeName: user
+                KeyType: HASH
+            ProvisionedThroughput:
+              ReadCapacityUnits: 1
+              WriteCapacityUnits: 1
+            Projection:
+              ProjectionType: "ALL"
+    MessagesTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: Messages
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        AttributeDefinitions:
+          - AttributeName: messageId
+            AttributeType: S
+          - AttributeName: createdAt
+            AttributeType: N
+          - AttributeName: userToUser
+            AttributeType: S
+        KeySchema:
+          - AttributeName: messageId
+            KeyType: HASH
+          - AttributeName: createdAt
+            KeyType: RANGE
+        GlobalSecondaryIndexes:
+          - IndexName: userToUserIndex
+            KeySchema:
+              - AttributeName: userToUser
+                KeyType: HASH
+              - AttributeName: createdAt
+                KeyType: RANGE
+            ProvisionedThroughput:
+              ReadCapacityUnits: 1
+              WriteCapacityUnits: 1
+            Projection:
+              ProjectionType: "ALL"
+
+plugins:
+  - severless-plugin-typescript
