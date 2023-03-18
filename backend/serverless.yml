@@ -9,6 +9,10 @@ provider:
   region: us-east-1
 
   environment:
+    CLIENTS_TABLE: Clients
+    MESSAGES_TABLE: Messages
+    USER_INDEX: userIndex
+    USER_TO_USER_INDEX: userToUserIndex
     WSSAPIGATEWAYENDPOINT:
       Fn::Join:
         - ""
@@ -57,7 +61,7 @@ provider:
 
 functions:
   webSocketHandler:
-    handler: src/handler.handle
+    handler: src/lambda/handler.handle
     events:
       - websocket:
           route: $connect
@@ -66,7 +70,7 @@ functions:
       - websocket:
           route: getMessages
       - websocket:
-          route: sendMessages
+          route: sendMessage
       - websocket:
           route: getClients
 
