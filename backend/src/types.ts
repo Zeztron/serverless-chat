@@ -2,10 +2,12 @@ export type Action =
   | '$connect'
   | '$disconnect'
   | 'getMessages'
-  | 'setMEssage'
+  | 'setMessage'
   | 'getClients';
 
 export type Client = {
   connectionId: string;
-  name: string;
+  user: string;
 };
+
+export type Status = 'forbidden' | 'ok';

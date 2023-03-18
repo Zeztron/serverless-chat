@@ -11,18 +11,25 @@ const OK_RESPONSE = {
   body: '',
 };
 
+const FORBIDDEN = {
+  statusCode: 403,
+  body: '',
+};
+
 export async function handleConnect(
   connectionId: string,
   queryParams: APIGatewayProxyEventQueryStringParameters | null
 ): Promise<APIGatewayProxyResult> {
   if (!queryParams || !queryParams['user']) {
-    return {
-      statusCode: 403,
-      body: '',
-    };
+    return FORBIDDEN;
   }
 
-  await dynamoClient.connect(connectionId, queryParams['name']!);
+  const connectionStatus = await dynamoClient.connect(
+    connectionId,
+    queryParams['user']!
+  );
+
+  if (connectionStatus === 'forbidden') return FORBIDDEN;
 
   return OK_RESPONSE;
 }

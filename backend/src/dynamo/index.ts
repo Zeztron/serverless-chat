@@ -1,6 +1,7 @@
 import AWS, { AWSError, ApiGatewayManagementApi } from 'aws-sdk';
 import { DocumentClient } from 'aws-sdk/clients/dynamodb';
-import { Client } from '../types';
+import { Client, Status } from '../types';
+import { createClientsMessage } from '../utils/createClientsMessage';
 
 export class DynamoClient {
   constructor(
@@ -16,7 +17,7 @@ export class DynamoClient {
     private readonly userToUserIndex = process.env.USER_TO_USER_INDEX!
   ) {}
 
-  async getAllClients(): Promise<Client[]> {
+  private async getAllClients(): Promise<Client[]> {
     const output = await this.docClient
       .scan({ TableName: this.clientTable })
       .promise();
@@ -26,7 +27,10 @@ export class DynamoClient {
     return clients as Client[];
   }
 
-  async postToConnection(connectionId: string, data: string): Promise<void> {
+  private async postToConnection(
+    connectionId: string,
+    data: string
+  ): Promise<boolean> {
     try {
       await this.apiGateway
         .postToConnection({
@@ -34,16 +38,20 @@ export class DynamoClient {
           Data: data,
         })
         .promise();
+
+      return true;
     } catch (error) {
       if ((error as AWSError).statusCode !== 410) {
         throw error;
       }
       // We want to disconnect when the connection is stale
       await this.disconnect(connectionId);
+
+      return false;
     }
   }
 
-  async notifyClients(connectionIdToExclude: string): Promise<void> {
+  private async notifyClients(connectionIdToExclude: string): Promise<void> {
     const clients: Client[] = await this.getAllClients();
 
     await Promise.all(
@@ -54,27 +62,64 @@ export class DynamoClient {
         .map(async (client: Client) => {
           await this.postToConnection(
             client.connectionId,
-            JSON.stringify(client)
+            createClientsMessage(clients)
           );
         })
     );
   }
 
-  async connect(connectionId: string, name: string): Promise<void> {
+  private async lookForUser(user: string) {
+    // Look for same name to prevent impersonations.
+    const output = await this.docClient
+      .query({
+        TableName: this.clientTable,
+        IndexName: this.userIndex,
+        KeyConditionExpression: '#user = :user',
+        ExpressionAttributeNames: {
+          '#user': 'user',
+        },
+        ExpressionAttributeValues: {
+          ':user': user,
+        },
+      })
+      .promise();
+
+    return output;
+  }
+
+  public async connect(connectionId: string, user: string): Promise<Status> {
+    // Look for user to check if that user already exists.
+    const output = await this.lookForUser(user);
+
+    if (output.Count && output.Count > 0) {
+      const client = (output.Items as Client[])[0];
+
+      if (
+        await this.postToConnection(
+          client.connectionId,
+          JSON.stringify({ type: 'ping' })
+        )
+      ) {
+        return 'forbidden';
+      }
+    }
+
     await this.docClient
       .put({
         TableName: this.clientTable,
         Item: {
           connectionId,
-          name,
+          user,
         },
       })
       .promise();
 
     await this.notifyClients(connectionId);
+
+    return 'ok';
   }
 
-  async disconnect(connectionId: string): Promise<void> {
+  public async disconnect(connectionId: string): Promise<void> {
     await this.docClient
       .delete({
         TableName: this.clientTable,
@@ -87,9 +132,9 @@ export class DynamoClient {
     await this.notifyClients(connectionId);
   }
 
-  async getClients(connectionId: string): Promise<void> {
+  public async getClients(connectionId: string): Promise<void> {
     const clients: Client[] = await this.getAllClients();
 
-    await this.postToConnection(connectionId, JSON.stringify(clients));
+    await this.postToConnection(connectionId, createClientsMessage(clients));
   }
 }

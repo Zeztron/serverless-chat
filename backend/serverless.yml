@@ -19,7 +19,7 @@ provider:
         - - Ref: WebsocketsApi
           - ".execute-api."
           - Ref: AWS::Region
-          - ".amazonaws.com/${self:stage}"
+          - ".amazonaws.com/${self:provider.stage}"
 
   iam:
     role:
@@ -134,4 +134,4 @@ resources:
               ProjectionType: "ALL"
 
 plugins:
-  - severless-plugin-typescript
+  - serverless-plugin-typescript
