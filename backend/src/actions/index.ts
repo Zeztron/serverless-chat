@@ -3,6 +3,7 @@ import {
   APIGatewayProxyResult,
 } from 'aws-lambda';
 import { DynamoClient } from '../dynamo';
+import { SendMessageBody } from '../types';
 
 const dynamoClient = new DynamoClient();
 
@@ -46,6 +47,15 @@ export async function handleGetClients(
   connectionId: string
 ): Promise<APIGatewayProxyResult> {
   await dynamoClient.getClients(connectionId);
+
+  return OK_RESPONSE;
+}
+
+export async function handleSendMessage(
+  senderConnectionId: string,
+  body: SendMessageBody
+): Promise<APIGatewayProxyResult> {
+  await dynamoClient.sendMessage(senderConnectionId, body);
 
   return OK_RESPONSE;
 }

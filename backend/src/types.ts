@@ -2,7 +2,7 @@ export type Action =
   | '$connect'
   | '$disconnect'
   | 'getMessages'
-  | 'setMessage'
+  | 'sendMessage'
   | 'getClients';
 
 export type Client = {
@@ -11,3 +11,8 @@ export type Client = {
 };
 
 export type Status = 'forbidden' | 'ok';
+
+export type SendMessageBody = {
+  message: string;
+  recipient: string;
+}

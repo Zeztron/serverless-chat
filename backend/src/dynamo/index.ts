@@ -1,7 +1,8 @@
 import AWS, { AWSError, ApiGatewayManagementApi } from 'aws-sdk';
 import { DocumentClient } from 'aws-sdk/clients/dynamodb';
-import { Client, Status } from '../types';
+import { Client, SendMessageBody, Status } from '../types';
 import { createClientsMessage } from '../utils/createClientsMessage';
+import { v4 } from 'uuid';
 
 export class DynamoClient {
   constructor(
@@ -68,7 +69,9 @@ export class DynamoClient {
     );
   }
 
-  private async lookForUser(user: string) {
+  private async getConnectionIdByUser(
+    user: string
+  ): Promise<string | undefined> {
     // Look for same name to prevent impersonations.
     const output = await this.docClient
       .query({
@@ -84,24 +87,40 @@ export class DynamoClient {
       })
       .promise();
 
-    return output;
+    if (output.Count && output.Count > 0) {
+      const client = (output.Items as Client[])[0];
+
+      return client.connectionId;
+    }
+
+    return undefined;
+  }
+
+  private async getUserToUser(senderConnectionId: string): Promise<Client> {
+    const output = await this.docClient
+      .get({
+        TableName: this.clientTable,
+        Key: {
+          connectionId: senderConnectionId,
+        },
+      })
+      .promise();
+
+    return output.Item as Client;
   }
 
   public async connect(connectionId: string, user: string): Promise<Status> {
     // Look for user to check if that user already exists.
-    const output = await this.lookForUser(user);
+    const existingConnectionId = await this.getConnectionIdByUser(user);
 
-    if (output.Count && output.Count > 0) {
-      const client = (output.Items as Client[])[0];
-
-      if (
-        await this.postToConnection(
-          client.connectionId,
-          JSON.stringify({ type: 'ping' })
-        )
-      ) {
-        return 'forbidden';
-      }
+    if (
+      existingConnectionId &&
+      (await this.postToConnection(
+        existingConnectionId,
+        JSON.stringify({ type: 'ping' })
+      ))
+    ) {
+      return 'forbidden';
     }
 
     await this.docClient
@@ -136,5 +155,43 @@ export class DynamoClient {
     const clients: Client[] = await this.getAllClients();
 
     await this.postToConnection(connectionId, createClientsMessage(clients));
+  }
+
+  public async sendMessage(
+    senderConnectionId: string,
+    body: SendMessageBody
+  ): Promise<void> {
+    const sender = await this.getUserToUser(senderConnectionId);
+    const userToUser = [sender.user, body.recipient].sort().join('#');
+
+    await this.docClient
+      .put({
+        TableName: this.messagesTable,
+        Item: {
+          messageId: v4(),
+          createdAt: new Date().getMilliseconds(),
+          userToUser,
+          message: body.message,
+          sender,
+        },
+      })
+      .promise();
+
+    const recipientConnectionId = await this.getConnectionIdByUser(
+      body.recipient
+    );
+
+    if (recipientConnectionId) {
+      await this.postToConnection(
+        recipientConnectionId,
+        JSON.stringify({
+          type: 'message',
+          value: {
+            sender: sender.user,
+            message: body.message,
+          },
+        })
+      );
+    }
   }
 }
