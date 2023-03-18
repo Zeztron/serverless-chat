@@ -4,3 +4,8 @@ export type Action =
   | 'getMessages'
   | 'setMEssage'
   | 'getClients';
+
+export type Client = {
+  connectionId: string;
+  name: string;
+};
