@@ -169,7 +169,7 @@ export class DynamoClient {
         TableName: this.messagesTable,
         Item: {
           messageId: v4(),
-          createdAt: new Date().getMilliseconds(),
+          createdAt: new Date().getTime(),
           userToUser,
           message: body.message,
           sender: sender.user,
