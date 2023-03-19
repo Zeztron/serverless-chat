@@ -1,6 +1,6 @@
 import AWS, { AWSError, ApiGatewayManagementApi } from 'aws-sdk';
 import { DocumentClient } from 'aws-sdk/clients/dynamodb';
-import { Client, SendMessageBody, Status } from '../types';
+import { Client, GetMessagesBody, SendMessageBody, Status } from '../types';
 import { createClientsMessage } from '../utils/createClientsMessage';
 import { v4 } from 'uuid';
 
@@ -96,7 +96,7 @@ export class DynamoClient {
     return undefined;
   }
 
-  private async getUserToUser(senderConnectionId: string): Promise<Client> {
+  private async getSender(senderConnectionId: string): Promise<Client> {
     const output = await this.docClient
       .get({
         TableName: this.clientTable,
@@ -161,7 +161,7 @@ export class DynamoClient {
     senderConnectionId: string,
     body: SendMessageBody
   ): Promise<void> {
-    const sender = await this.getUserToUser(senderConnectionId);
+    const sender = await this.getSender(senderConnectionId);
     const userToUser = [sender.user, body.recipient].sort().join('#');
 
     await this.docClient
@@ -172,7 +172,7 @@ export class DynamoClient {
           createdAt: new Date().getMilliseconds(),
           userToUser,
           message: body.message,
-          sender,
+          sender: sender.user,
         },
       })
       .promise();
@@ -193,5 +193,41 @@ export class DynamoClient {
         })
       );
     }
+  }
+
+  public async getMessages(
+    connectionId: string,
+    body: GetMessagesBody
+  ): Promise<void> {
+    const sender = await this.getSender(connectionId);
+    const userToUser = [sender.user, body.targetUser].sort().join('#');
+
+    const output = await this.docClient
+      .query({
+        TableName: this.messagesTable,
+        IndexName: this.userToUserIndex,
+        KeyConditionExpression: '#userToUser = :userToUser',
+        ExpressionAttributeNames: {
+          '#userToUser': 'userToUser',
+        },
+        ExpressionAttributeValues: {
+          ':userToUser': userToUser,
+        },
+        Limit: body.limit,
+        ExclusiveStartKey: body.startKey,
+        ScanIndexForward: false,
+      })
+      .promise();
+
+    const messages =
+      output.Items && output.Items.length > 0 ? output.Items : [];
+
+    await this.postToConnection(
+      connectionId,
+      JSON.stringify({
+        type: 'messages',
+        value: { messages },
+      })
+    );
   }
 }

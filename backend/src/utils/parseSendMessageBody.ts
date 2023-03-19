@@ -1,6 +1,6 @@
 import { SendMessageBody } from '../types';
 
-export const parseMessageBody = (body: string | null): SendMessageBody => {
+export const parseSendMessageBody = (body: string | null): SendMessageBody => {
   const sendMessageBody: SendMessageBody = JSON.parse(body || '{}');
 
   if (

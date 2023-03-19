@@ -5,8 +5,10 @@ import {
   handleDisconnect,
   handleGetClients,
   handleSendMessage,
+  handleGetMessages,
 } from '../actions';
-import { parseMessageBody } from '../utils/parseMessageBody';
+import { parseSendMessageBody } from '../utils/parseSendMessageBody';
+import { parseGetMessagesBody } from '../utils/parseGetMessagesBody';
 
 export const handle = async (
   event: APIGatewayProxyEvent
@@ -22,7 +24,9 @@ export const handle = async (
     case 'getClients':
       return handleGetClients(connectionId);
     case 'sendMessage':
-      return handleSendMessage(connectionId, parseMessageBody(event.body));
+      return handleSendMessage(connectionId, parseSendMessageBody(event.body));
+    case 'getMessages':
+      return handleGetMessages(connectionId, parseGetMessagesBody(event.body));
 
     default:
       return {
